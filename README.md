@@ -8,3 +8,21 @@ The API is hosted at https://my-iptv.herokuapp.com
 - EPG
   - https://my-iptv.herokuapp.com/epg/unifi-tv
     - Redirecting to https://github.com/weareblahs/epg/blob/master/unifitv.xml
+
+### Local Development
+#### Requirements
+1. [Nodejs](https://nodejs.org/en/)
+
+To start the server locally follow this steps.
+1. Install the dependencies
+    ```bash
+    $ npm install
+    ```
+1. Start the dev server
+    ```bash
+    $ npm run dev
+    ```
+1. Start the as production server
+    ```bash
+    $ npm start
+    ```
