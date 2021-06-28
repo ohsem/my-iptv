@@ -1,14 +1,18 @@
 const axios = require('axios')
+const NodeCache = require('node-cache')
+const nodeCache = new NodeCache({ stdTTL: 60 * 30 })
 const baseURL = 'https://my-iptv.herokuapp.com'
 const unifiAuthURL = 'https://playtv.unifi.com.my:7042/VSP/V3/Authenticate'
 const unifiEpgURL = 'https://raw.githubusercontent.com/weareblahs/epg/master/unifitv.xml'
-
+const UNIFI_CREDENTIAL_ERROR_CODE = '157021001'
 const DEFAULT_HEADER = {
   headers: {
     Host: 'playtv.unifi.com.my:7042',
     Origin: 'https://playtv.unifi.com.my'
   }
 }
+
+const cacheKey = key => Buffer.from(key).toString('base64')
 
 module.exports = (fastify, options, next) => {
   fastify.register(require('point-of-view'), {
@@ -24,55 +28,90 @@ module.exports = (fastify, options, next) => {
     })
   })
   
-  fastify.get('/m3u8/unifi-tv', async ({ query }, res) => {
+  fastify.get('/m3u8/unifi-tv', ({ query }, res) => {
     const { userID, clientPasswd } = query
-    const firstAuthData = {
-      authenticateBasic: {
-        userID,
-        clientPasswd,
-        userType: '1',
-        lang: 'en'
-      }
+    const userKey = cacheKey(`${userID}:${clientPasswd}`)
+    if (!userID || !clientPasswd) res.send({ message: 'Please specify your credentials in the query parameter'}, 400)
+    if (nodeCache.get(userKey)) {
+      console.info(`Retrieving VUID from cache for userID=${userID}`)
+      res.view('./src/m3u8/unifi-tv.ejs', { vuid: nodeCache.get(userKey)})
     }
-    const firstAuth = await axios.post(unifiAuthURL, firstAuthData, DEFAULT_HEADER)
-    const { physicalDeviceID, deviceModel } = firstAuth.data.devices[0]
-    const secondAuthData = {
-      authenticateBasic: {
-        userID,
-        clientPasswd,
-        userType: '1',
-        timeZone: 'Asia/Brunei',
-        isSupportWebpImgFormat: '0',
-        lang: 'en'
-      },
-      authenticateDevice: {
-        physicalDeviceID,
-        terminalID: physicalDeviceID,
-        deviceModel
-      },
-      authenticateTolerant: {
-        areaCode: '1200',
-        templateName: 'default',
-        bossID: '',
-        userGroup: '-1'
-      }
-    }
-
-    axios
-      .post(unifiAuthURL, secondAuthData, DEFAULT_HEADER)
-      .then(({ data }) => {
+    else {
+      const reAuthenticate = ({ data }) => {
         if (data.VUID) {
+          nodeCache.set(userKey, data.VUID)
+          console.info(`VUID exist on the first Auth. Skipping the second Auth for userID=${userID}`)
           res.view('./src/m3u8/unifi-tv.ejs', { vuid: data.VUID})
+        } else if (data.result.retCode === UNIFI_CREDENTIAL_ERROR_CODE) {
+          console.error('Error from unifi auth server:', data.result.retMsg)
+          res.code(400).send({ message: `Error from unifi auth server: ${data.result.retMsg}`})
         } else {
-          console.error('Response from unifi server:', data)
-          res.send({ message: 'Something went wrong. Please check your credential again'}, 401)
+          const { physicalDeviceID, deviceModel } = data.devices[0]
+          axios
+            .post(
+              unifiAuthURL,
+              {
+                authenticateBasic: {
+                  userID,
+                  clientPasswd,
+                  userType: '1',
+                  timeZone: 'Asia/Brunei',
+                  isSupportWebpImgFormat: '0',
+                  lang: 'en'
+                },
+                authenticateDevice: {
+                  physicalDeviceID,
+                  terminalID: physicalDeviceID,
+                  deviceModel
+                },
+                authenticateTolerant: {
+                  areaCode: '1200',
+                  templateName: 'default',
+                  bossID: '',
+                  userGroup: '-1'
+                }
+              },
+              DEFAULT_HEADER
+            )
+            .then(({ data }) => {
+              if (data.VUID) {
+                nodeCache.set(userKey, data.VUID)
+                console.info(`Retrieve VUID on the second Auth for userID=${userID}`)
+                res.view('./src/m3u8/unifi-tv.ejs', { vuid: data.VUID})
+              } else {
+                console.error('Response from unifi server:', data)
+                res.code(401).send({ message: 'Something went wrong. Please check your credential again'})
+              }
+            })
+            .catch(err => {
+              console.error('Error on second Auth response from unifi server:', err)
+              res.code(401).send({ message: 'Something went wrong. Please try again later.'})
+            })
         }
-      })
+      }
+      const dummyAuthData = {
+        authenticateBasic: {
+          userID,
+          clientPasswd,
+          userType: '1',
+          lang: 'en'
+        }
+      }
+
+      axios
+        .post(unifiAuthURL, dummyAuthData, DEFAULT_HEADER)
+        .then(reAuthenticate)
+        .catch(err => {
+          console.error('Error on first Auth response from unifi server:', err)
+          res.code(400).send({ message: 'Something went wrong. Please try again later.'})
+        })
+    }
   })
 
   fastify.get('/epg/unifi-tv', (req, res) => {
     res.redirect(unifiEpgURL)
   })
 
+  console.log(`Running the my-iptv app on port ${process.env.PORT}`)
   next()
 }
