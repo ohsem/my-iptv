@@ -6,8 +6,7 @@
     "axios": "^0.21.1",
     "ejs": "^3.1.6",
     "fastify-cli": "^2.13.0",
-    "node-cache": "^5.1.2",
-    "point-of-view": "^4.15.0"
+    "node-cache": "^5.1.2"
   },
   "scripts": {
     "dev": "PORT=3000 fastify start -w ./src/server.js",

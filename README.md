@@ -1,6 +1,8 @@
 # IPTV
 API to retrive IPTV links and informations.
-The API is hosted at https://my-iptv.herokuapp.com
+The API is hosted at https://my-iptv.herokuapp.com.
+
+Retrieve the m3u8 ejs template from https://raw.githubusercontent.com/weareblahs/unifi-tv/main/dev/unifitv.ejs. Thanks to @weareblahs
 
 ### Unifi TV
 - m3u8 Provider
