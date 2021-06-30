@@ -103,7 +103,8 @@ module.exports = (fastify, options, next) => {
           clientPasswd,
           userType: '1',
           lang: 'en'
-        }
+        },
+        authenticateDevice: { deviceModel: "PC Web TV" }
       }
 
       axios
